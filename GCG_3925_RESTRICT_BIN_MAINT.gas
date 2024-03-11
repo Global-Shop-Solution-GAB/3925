@@ -1,0 +1,421 @@
+Program.Sub.ScreenSU.Start
+gui.SS_FormBins..create
+gui.SS_FormBins..caption("BIN Restriction Maintenance")
+gui.SS_FormBins..size(8700,6645)
+gui.SS_FormBins..minx(0)
+gui.SS_FormBins..miny(0)
+gui.SS_FormBins..position(0,0)
+gui.SS_FormBins..event(resize,SS_FormBins_resize)
+gui.SS_FormBins..event(unload,Unload)
+gui.SS_FormBins..alwaysontop(False)
+gui.SS_FormBins..fontname("Arial")
+gui.SS_FormBins..fontsize(8)
+gui.SS_FormBins..forecolor(0)
+gui.SS_FormBins..fontstyle(,,,,)
+gui.SS_FormBins..BackColor(-2147483633)
+gui.SS_FormBins..controlbox(True)
+gui.SS_FormBins..maxbutton(False)
+gui.SS_FormBins..minbutton(False)
+gui.SS_FormBins..mousepointer(0)
+gui.SS_FormBins..moveable(True)
+gui.SS_FormBins..sizeable(True)
+gui.SS_FormBins..ShowInTaskBar(True)
+gui.SS_FormBins..titlebar(True)
+gui.SS_FormBins.cmdSave.create(button)
+gui.SS_FormBins.cmdSave.caption("Save")
+gui.SS_FormBins.cmdSave.visible(True)
+gui.SS_FormBins.cmdSave.size(940,360)
+gui.SS_FormBins.cmdSave.zorder(0)
+gui.SS_FormBins.cmdSave.position(100,5600)
+gui.SS_FormBins.cmdSave.enabled(True)
+gui.SS_FormBins.cmdSave.fontname("Arial")
+gui.SS_FormBins.cmdSave.fontsize(8)
+gui.SS_FormBins.cmdSave.event(click,Save)
+gui.SS_FormBins.cmdSave.defaultvalue("")
+gui.SS_FormBins.cmdSave.controlgroup(0)
+gui.SS_FormBins.gsfgBins.create(gsflexgrid)
+gui.SS_FormBins.gsfgBins.FixedRows(0)
+gui.SS_FormBins.gsfgBins.FixedCols(0)
+gui.SS_FormBins.gsfgBins.visible(True)
+gui.SS_FormBins.gsfgBins.size(8205,5280)
+gui.SS_FormBins.gsfgBins.zorder(0)
+gui.SS_FormBins.gsfgBins.position(140,110)
+gui.SS_FormBins.gsfgBins.enabled(True)
+gui.SS_FormBins.gsfgBins.event(mouseup,gsfgbins_Sort)
+gui.SS_FormBins.gsfgBins.event(posttextmatrix,gsfgbins_posttextmatrix)
+
+
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+
+Variable.UDT.uBins.Define("Bin",String,Bin)
+Variable.UDT.uBins.Define("Location",String,Location)
+Variable.UDT.uBins.Define("Bin_Description",String,Bin_Description)
+Variable.UDT.uBins.Define("Flag_Issue",String)
+Variable.UDT.uBins.Define("Flag_Ship",String)
+Variable.UDT.uBins.Define("Flag_Issue_Bit",String)
+Variable.UDT.uBins.Define("Flag_Ship_Bit",String)
+Variable.uGlobal.uBins.Declare("uBins")
+Variable.Global.bSaved.Declare(Boolean,True)
+Variable.Global.bSort.Declare(Boolean,True)
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+'Coded By SFF 6/25/2015
+'Restrict BIN Maintenance Program to define BINS that are restricted.
+
+F.ODBC.Connection!conX.OpenConnection(V.Ambient.PDSN,V.Ambient.PUser,V.Ambient.PPass,72000)
+
+'Load Screen
+F.Intrinsic.Control.CallSub(Buildstyles)
+F.Intrinsic.Control.CallSub(Loadscreen)
+Gui.SS_FormBins..Show
+
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3925_RESTRICT_BIN_MAINT.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.Main.End
+
+Program.Sub.Unload.Start
+F.Intrinsic.Control.SetErrorHandler("Unload_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+V.Local.iRet.Declare(Long)
+
+'If changes made, then prompt to save or not
+F.Intrinsic.Control.If(V.Global.bSaved,=,False)
+	F.Intrinsic.UI.Msgbox("Save Changes?","Changes NOT Saved",4,V.Local.iRet)
+	F.Intrinsic.Control.If(V.Local.iRet,=,6)
+		F.Intrinsic.Control.CallSub(Save)
+	F.Intrinsic.Control.EndIf
+F.Intrinsic.Control.EndIf
+
+'End Program
+F.Intrinsic.Control.End
+
+F.Intrinsic.Control.Label("Unload_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3925_RESTRICT_BIN_MAINT.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.Unload.End
+
+Program.Sub.LoadScreen.Start
+F.Intrinsic.Control.SetErrorHandler("LoadScreen_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+'Load UDT and load grid.
+V.Local.sSql.Declare(String)
+V.Local.sRet.Declare(String)
+V.Local.i.Declare(Long)
+
+V.uGlobal.uBins.Redim(-1,-1)
+
+V.Local.sSql.Set("Select BIN,LOCATION,BIN_DESCRIPTION from v_BIN_MASTER where bin <> '' order by BIN ASC")
+
+'Load All BINS
+F.ODBC.Connection!conX.OpenRecordsetRO("rst",V.Local.sSql)
+F.Intrinsic.Control.If(V.ODBC.conX!rst.EOF,<>,True)
+	F.Intrinsic.Variable.LoadUDTFromRecordset("conX","rst","v.uGlobal.uBins",False)
+F.Intrinsic.Control.EndIf
+F.ODBC.conX!rst.Close
+
+'Get existing restrictions for BINS
+F.Intrinsic.UI.InvokeWaitDialog("Loading Bins")
+F.Intrinsic.Control.For(V.Local.i,V.uGlobal.uBins.LBound,V.uGlobal.uBins.UBound,1)
+	F.Intrinsic.UI.ChangeWaitStatus("Loading Bins",V.Local.i,V.uGlobal.uBins.LBound,V.uGlobal.uBins.UBound)
+	F.Intrinsic.String.Build("Select FLAG_SHIP,FLAG_ISSUE from GCG_3925_BIN_RESTRICT where BIN = '{0}' and LOCATION = '{1}'",V.uGlobal.uBins(v.Local.i)!Bin.Trim,V.uGlobal.uBins(v.Local.i)!Location.Trim,V.Local.sSql)
+	F.ODBC.Connection!conX.OpenRecordsetRO("rst",V.Local.sSql)
+	F.Intrinsic.Control.If(V.ODBC.conX!rst.EOF,<>,True)
+		V.uGlobal.uBins(v.Local.i)!Flag_Issue.Set(V.ODBC.conX!rst.FieldVal!FLAG_ISSUE)
+		V.uGlobal.uBins(v.Local.i)!Flag_Ship.Set(V.ODBC.conX!rst.FieldVal!FLAG_SHIP)
+	F.Intrinsic.Control.EndIf
+	F.ODBC.conX!rst.Close
+F.Intrinsic.Control.Next(V.Local.i)
+
+'Load Grid
+Gui.SS_FormBins.gsfgBins.LoadFromUDT("uGlobal.uBins","Bin*!*Location*!*Bin_Description*!*Flag_Issue*!*Flag_Ship",2)
+
+F.Intrinsic.UI.CloseWaitDialog
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("LoadScreen_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3925_RESTRICT_BIN_MAINT.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.LoadScreen.End
+
+Program.Sub.BuildStyles.Start
+F.Intrinsic.Control.SetErrorHandler("BuildStyles_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+'BuildStyles for Bins Grid
+
+Gui.SS_FormBins.gsfgBins.Cols(5)
+Gui.SS_FormBins.gsfgBins.Rows(1)
+Gui.SS_FormBins.gsfgBins.Rows(2)
+Gui.SS_FormBins.gsfgBins.FixedRows(1)
+
+'Header Row*****************
+Gui.SS_FormBins.gsfgBins.BuildStyle(1,0,"Type","Command","Bin")
+Gui.SS_FormBins.gsfgBins.BuildStyle(1,1,"Type","Command","Location")
+Gui.SS_FormBins.gsfgBins.BuildStyle(1,2,"Type","Command","Description")
+Gui.SS_FormBins.gsfgBins.BuildStyle(1,3,"Type","Command","Issue From?")
+Gui.SS_FormBins.gsfgBins.BuildStyle(1,4,"Type","Command","Ship From?")
+
+Gui.SS_FormBins.gsfgBins.BuildStyle(1,0,"Format","Alignment",2)
+Gui.SS_FormBins.gsfgBins.BuildStyle(1,1,"Format","Alignment",2)
+Gui.SS_FormBins.gsfgBins.BuildStyle(1,2,"Format","Alignment",2)
+Gui.SS_FormBins.gsfgBins.BuildStyle(1,3,"Format","Alignment",2)
+Gui.SS_FormBins.gsfgBins.BuildStyle(1,4,"Format","Alignment",2)
+
+'Data Rows*******************
+Gui.SS_FormBins.gsfgBins.BuildStyle(2,0,"Type","Locked",True)
+Gui.SS_FormBins.gsfgBins.BuildStyle(2,1,"Type","Locked",True)
+Gui.SS_FormBins.gsfgBins.BuildStyle(2,2,"Type","Locked",True)
+
+Gui.SS_FormBins.gsfgBins.BuildStyle(2,0,"Format","Alignment",2)
+Gui.SS_FormBins.gsfgBins.BuildStyle(2,1,"Format","Alignment",2)
+Gui.SS_FormBins.gsfgBins.BuildStyle(2,2,"Format","Alignment",2)
+Gui.SS_FormBins.gsfgBins.BuildStyle(2,3,"Type","DropDownList","True*!*False")
+Gui.SS_FormBins.gsfgBins.BuildStyle(2,4,"Type","DropDownList","True*!*False")
+
+Gui.SS_FormBins.gsfgBins.SetColumnPercentages(".20:.20:.30:.15:.15")
+
+Gui.SS_FormBins.gsfgBins.ApplyStyle(0,1)
+Gui.SS_FormBins.gsfgBins.ApplyStyle(1,2)
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("BuildStyles_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3925_RESTRICT_BIN_MAINT.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.BuildStyles.End
+
+Program.Sub.Save.Start
+F.Intrinsic.Control.SetErrorHandler("Save_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+'loop through UDT and save changes to custom table.
+'Commit Changes
+Gui.SS_FormBins.gsfgBins.Commit
+
+'Resort By Bin
+F.Intrinsic.Variable.UDTMultiQuickSort(V.uGlobal.uBins!Bin,True)
+
+'Set Blank Flags to True BIT Value
+F.Intrinsic.Variable.UDTMultiSeekSet(V.uGlobal.uBins!Flag_Issue,"",V.uGlobal.uBins!Flag_Issue_Bit,"1")
+F.Intrinsic.Variable.UDTMultiSeekSet(V.uGlobal.uBins!Flag_Ship,"",V.uGlobal.uBins!Flag_Ship_Bit,"1")
+
+'Set True Flags to True Bit Value
+F.Intrinsic.Variable.UDTMultiSeekSet(V.uGlobal.uBins!Flag_Issue,"True",V.uGlobal.uBins!Flag_Issue_Bit,"1")
+F.Intrinsic.Variable.UDTMultiSeekSet(V.uGlobal.uBins!Flag_Ship,"True",V.uGlobal.uBins!Flag_Ship_Bit,"1")
+
+'Set False Flags to False Bit Value
+F.Intrinsic.Variable.UDTMultiSeekSet(V.uGlobal.uBins!Flag_Issue,"False",V.uGlobal.uBins!Flag_Issue_Bit,"0")
+F.Intrinsic.Variable.UDTMultiSeekSet(V.uGlobal.uBins!Flag_Ship,"False",V.uGlobal.uBins!Flag_Ship_Bit,"0")
+
+'Set Field Reference
+F.Intrinsic.Variable.SetUDTFieldReference(V.uGlobal.uBins!Flag_Issue_Bit,"FLAG_ISSUE")
+F.Intrinsic.Variable.SetUDTFieldReference(V.uGlobal.uBins!Flag_Ship_Bit,"FLAG_SHIP")
+
+'Remove Records before saving active BINS
+F.ODBC.Connection!conX.Execute("Delete from GCG_3925_BIN_RESTRICT")
+
+'Save UDT to RecordSet
+F.ODBC.Connection!conX.OpenRecordsetRW("rst","SELECT * FROM GCG_3925_BIN_RESTRICT")
+F.Intrinsic.Control.If(V.uGlobal.uBins.UBound,<>,-1)
+	F.Intrinsic.Variable.SaveUDTToRecordSet("conX","rst","v.uGlobal.uBins")
+F.Intrinsic.Control.EndIf
+F.ODBC.conX!rst.Close
+
+'Change Ref back to blank for reloading UDT
+F.Intrinsic.Variable.SetUDTFieldReference(V.uGlobal.uBins!Flag_Issue_Bit,"")
+F.Intrinsic.Variable.SetUDTFieldReference(V.uGlobal.uBins!Flag_Ship_Bit,"")
+
+'Keep Track of Record Saved or Not
+V.Global.bSaved.Set(True)
+
+'Notify User
+F.Intrinsic.UI.Msgbox("Changes Saved")
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Save_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3925_RESTRICT_BIN_MAINT.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.Save.End
+
+program.sub.gsfgbins_posttextmatrix.start
+F.Intrinsic.Control.SetErrorHandler("gsfgbins_posttextmatrix_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+V.Local.i.Declare(Long)
+V.Local.sRow.Declare(String)
+'Set the flag in the UDT for which ever row is selected.
+'Changes Made
+V.Global.bSaved.Set(False)
+
+Gui.SS_FormBins.gsfgBins.ReadRow(V.Args.Key,V.Local.sRow)
+F.Intrinsic.String.Split(V.Local.sRow,"*!*",V.Local.sRow)
+
+F.Intrinsic.Control.If(V.Args.Column,=,3)
+	'Set Flag Issue
+	F.Intrinsic.Variable.UDTMultiSeekSet(V.uGlobal.uBins!Bin,V.Local.sRow(0),V.uGlobal.uBins!Location,V.Local.sRow(1),V.uGlobal.uBins!Flag_Issue,V.Local.sRow(3))
+F.Intrinsic.Control.ElseIf(V.Args.Column,=,4)
+	'Set Flag Ship
+	F.Intrinsic.Variable.UDTMultiSeekSet(V.uGlobal.uBins!Bin,V.Local.sRow(0),V.uGlobal.uBins!Location,V.Local.sRow(1),V.uGlobal.uBins!Flag_Ship,V.Local.sRow(4))
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("gsfgbins_posttextmatrix_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3925_RESTRICT_BIN_MAINT.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+Function.Intrinsic.Control.EndIf
+
+
+program.sub.gsfgbins_posttextmatrix.end
+
+program.sub.gsfgbins_Sort.start
+F.Intrinsic.Control.SetErrorHandler("gsfgbins_commandclick_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+F.Intrinsic.Control.If(V.Args.MouseRow,=,0)
+	F.Intrinsic.Control.If(V.Global.bSort,=,False)
+		V.Global.bSort.Set(True)
+	F.Intrinsic.Control.Else
+		V.Global.bSort.Set(False)
+	F.Intrinsic.Control.EndIf
+
+	Gui.SS_FormBins.gsfgBins.Visible(False)
+	'Resort UDT based on Column
+	F.Intrinsic.Control.If(V.Args.MouseCol,=,0)
+		F.Intrinsic.Variable.UDTMultiQuickSort(V.uGlobal.uBins!Bin,V.Global.bSort)
+	F.Intrinsic.Control.ElseIf(V.Args.MouseCol,=,1)
+		F.Intrinsic.Variable.UDTMultiQuickSort(V.uGlobal.uBins!Location,V.Global.bSort)
+	F.Intrinsic.Control.ElseIf(V.Args.MouseCol,=,2)
+		F.Intrinsic.Variable.UDTMultiQuickSort(V.uGlobal.uBins!Bin_Description,V.Global.bSort)
+	F.Intrinsic.Control.ElseIf(V.Args.MouseCol,=,3)
+		F.Intrinsic.Variable.UDTMultiQuickSort(V.uGlobal.uBins!Flag_Issue,V.Global.bSort)
+	F.Intrinsic.Control.ElseIf(V.Args.MouseCol,=,4)
+		F.Intrinsic.Variable.UDTMultiQuickSort(V.uGlobal.uBins!Flag_Ship,V.Global.bSort)
+	F.Intrinsic.Control.EndIf
+
+	'Rebuild Grid
+	F.Intrinsic.Control.CallSub(Buildstyles)
+
+	'Reload Grid after Sorting Done
+	Gui.SS_FormBins.gsfgBins.LoadFromUDT("uGlobal.uBins","Bin*!*Location*!*Bin_Description*!*Flag_Issue*!*Flag_Ship",2)
+
+	Gui.SS_FormBins.gsfgBins.Visible(True)
+
+	Gui.SS_FormBins.gsfgBins.SetActiveCell(1,4)
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("gsfgbins_commandclick_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3925_RESTRICT_BIN_MAINT.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+Function.Intrinsic.Control.EndIf
+
+
+program.sub.gsfgbins_Sort.end
+
+program.sub.ss_formbins_resize.start
+F.Intrinsic.Control.SetErrorHandler("ss_formbins_resize_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+'Resizing Configured by Forms Designer, this will be erased if you change it.
+
+V.local.width.declare(Long)
+V.local.height.declare(Long)
+V.local.x.declare(Long)
+V.local.Y.declare(Long)
+Function.Intrinsic.Control.If(Variable.Screen.SS_FormBins.Width,<,8700)
+	Gui.SS_FormBins..Size(8700,Variable.Screen.SS_FormBins.Height)
+Function.Intrinsic.Control.EndIf
+Function.Intrinsic.Control.If(Variable.Screen.SS_FormBins.height,<,6450)
+	Gui.SS_FormBins..Size(Variable.Screen.SS_FormBins.Width,6450)
+Function.Intrinsic.Control.EndIf
+Function.Intrinsic.Math.mult(Variable.Screen.SS_FormBins.Height,0.837,Variable.Local.Y)
+Gui.SS_FormBins.cmdSave.Position(V.Local.x,V.Local.y)
+Function.Intrinsic.Math.mult(Variable.Screen.SS_FormBins.Height,0.793,Variable.Local.height)
+Function.Intrinsic.Math.mult(Variable.Screen.SS_FormBins.Width,0.947,Variable.Local.width)
+Gui.SS_FormBins.gsfgBins.Size(V.Local.width,V.Local.height)
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("ss_formbins_resize_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3925_RESTRICT_BIN_MAINT.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+Function.Intrinsic.Control.EndIf
+
+
+program.sub.ss_formbins_resize.end
+
+Program.Sub.Comments.Start
+${$0$}$GCG_RESTRICT_BIN_MAINT$}$SFF$}$6/25/2015
+${$3$}$0$}$$}$-1$}$-1$}$$}$1/1/1900$}$**OTHER PROJECT**
+Issuing Material>Lot/Bin Screen:
+GAB Script will be attached to hook 32913 and will read the BDF. If any listed bins within the BDF are being used to issue material the GAB script will not allow the save/issue to continue. The bins that are not to be used will be set up through a separate maintenance program.
+
+
+Shipping>Lines>Lot/Bin
+CORE changes will be done that will add a GAB Cancel Flag to both hooks 16574 and 16579
+The GAB script will read the BDF. Looking in the First column for a Y. It will read all Y lines that are to be shipped checking each respective Bin being shipped from. If any of the bins being used the GAB script will notify the user which bin/bins are not allowed to be chosen and pass a 1 to the cancel flag to prevent the save. The user must make new selections to continue.
+
+** THIS PROJECT**
+Maintenance Program:
+A simple maintenance program will be created that will allow a user to actively mark/unmark bins that are not allowed to be issued from or shipped from.
+Include a Textbox, browser to bin master, save and delete buttons, and a grid to display all the Bins that have been marked as non-shippable/issuable. Selecting an item from the grid will populate the text box so it can be removed.
+
+
+
+Assumption: Parts being issued or Shipped are marked as Lot/Bin parts and the lot/bins records are required to be manually chosen from the above screens by the user completing the transactions.
+
+Program.Sub.Comments.End
+Program.Sub.ScreenSS.Start
+SS_Form1{{CAPTION::BIN Restriction Maintenance
+SS_Form1.CTRL{{NAME::cmdSave\\TYPE::5\\CAPTION::Save\\GROUP::-1\\BROWSER::0\\SIZE::1
+SS_Form1.CTRL{{NAME::lbl_gsfgBins\\TYPE::1\\CAPTION::Bins\\GROUP::-1\\BROWSER::0\\SIZE::1
+
+Program.Sub.ScreenSS.End
+
