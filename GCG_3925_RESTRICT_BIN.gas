@@ -1,0 +1,219 @@
+Program.Sub.ScreenSU.Start
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+
+Variable.Global.sBin.Declare(String)
+Variable.Global.bExists.Declare(Boolean,False)
+Variable.Global.sBinTemp.Declare(String)
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+'Coded BY SFF 6/25/2015
+'Restrict certain BIN issues during issue material
+
+F.ODBC.Connection!conX.OpenConnection(V.Ambient.PDSN,V.Ambient.PUser,V.Ambient.PPass)
+
+'Script will run if any of the following LOT BIN Screens when user is selecting to ship/issue from
+F.Intrinsic.Control.If(V.Caller.Hook,=,16574)
+	'Shipping
+	F.Intrinsic.Control.CallSub(Shipping)
+F.Intrinsic.Control.ElseIf(V.Caller.Hook,=,32913)
+	'Issue Material Lot Bin
+	F.Intrinsic.Control.CallSub(Issuematerial)
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3925_RESTRICT_BIN.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.Main.End
+
+Program.Sub.CheckBins.Start
+F.Intrinsic.Control.SetErrorHandler("CheckBins_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+V.Local.sMsg.Declare(String)
+V.Local.i.Declare(Long)
+V.Local.sField.Declare(String)
+V.Local.bRestrict.Declare(Boolean,False)
+V.Local.sSql.Declare(String)
+V.Local.sBin.Declare(String)
+
+'Control Field to select
+F.Intrinsic.Control.If(V.Args.Screen,=,"Shipping")
+	'Select Flag_Ship
+	V.Local.sField.Set("FLAG_SHIP")
+F.Intrinsic.Control.ElseIf(V.Args.Screen,=,"IssueMaterial")
+	'Select Flag_Issue
+	V.Local.sField.Set("FLAG_ISSUE")
+F.Intrinsic.Control.EndIf
+
+'Global.bExists keeps track of whether or NOT restrictions exist for any of the bins, and sBin keeps an array of the Bin that have restrictions.
+F.Intrinsic.Control.If(V.Args.Bins.Trim,<>,"")
+	F.Intrinsic.String.Split(V.Args.Bins,"*!*",V.Local.sBin)
+	F.Intrinsic.Control.For(V.Local.i,1,V.Local.sBin.UBound,1)
+		'Select field
+		F.Intrinsic.String.Build("Select {0} as FLAG from GCG_3925_BIN_RESTRICT where BIN = '{1}'",V.Local.sField,V.Local.sBin(v.Local.i).Trim,V.Local.sSql)
+		F.ODBC.Connection!conX.OpenRecordsetRO("rst",V.Local.sSql)
+		F.Intrinsic.Control.If(V.ODBC.conX!rst.EOF,<>,True)
+			F.Intrinsic.Control.If(V.ODBC.conX!rst.FieldVal!FLAG,=,"False")
+				V.Local.bRestrict.Set(True)
+				'String Restricted Bins together
+				F.Intrinsic.String.Build("{0}{1}{2}",V.global.sBin,V.Ambient.NewLine,V.Local.sBin(v.Local.i).Trim,V.Global.sBin)
+			F.Intrinsic.Control.EndIf
+		F.Intrinsic.Control.EndIf
+		F.ODBC.conX!rst.Close
+	F.Intrinsic.Control.Next(V.Local.i)
+F.Intrinsic.Control.EndIf
+
+'if bRestrict = True, then notify user and a list of Bins with restrictions for either Shipping or Issuing
+F.Intrinsic.Control.If(V.local.bRestrict,=,True)
+	F.Intrinsic.String.Build("The Following BINS Can NOT be Selected From:{1}{0}",V.Ambient.NewLine,V.Global.sBin,V.Local.sMsg)
+	V.Passed.777777.Set(1)
+	F.Intrinsic.UI.Msgbox(V.Local.sMsg)
+	F.Intrinsic.Control.End
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("CheckBins_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3925_RESTRICT_BIN.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.CheckBins.End
+
+Program.Sub.IssueMaterial.Start
+F.Intrinsic.Control.SetErrorHandler("IssueMaterial_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+'String together the Bins from Issue Material Lot Bin screen in sBinTemp as an array, then pass to checkbins
+V.Local.sRet.Declare(String)
+V.Local.i.Declare(Float)
+V.local.bStatus.Declare(Boolean)
+V.local.sSql.Declare(String)
+V.local.iRet.Declare(Float)
+V.Local.iRows.Declare(Long)
+V.Local.sTemp.Declare(String)
+
+'Load BDF
+'Load (sBDF) -> Clone (sBDF to tBDF) -> ReadRow (from sBDF)
+F.Intrinsic.BDF.Load("AUX001","AUX001")
+F.Intrinsic.BDF.ReadRowCount("AUX001",V.Local.iRows)
+F.Intrinsic.Math.Sub(V.Local.iRows,1,V.Local.iRows)
+F.Intrinsic.Control.For(V.Local.i,0,V.Local.iRows,1)
+	F.Intrinsic.BDF.ReadRow("AUX001",V.Local.i,V.Local.sRet)
+	F.Intrinsic.String.Split(V.Local.sRet,"|~|",V.Local.sRet)
+	F.Intrinsic.Control.If(V.Local.sRet(0).Trim,=,"Y")
+		F.Intrinsic.Control.If(V.Local.sRet(3).Trim,<>,"")
+			F.Intrinsic.String.Build("{0}*!*{1}",V.Local.sTemp,V.Local.sRet(3).Trim,V.Local.sTemp)
+		F.Intrinsic.Control.EndIf
+	F.Intrinsic.Control.EndIf
+F.Intrinsic.Control.Next(V.Local.i)
+
+F.Intrinsic.Control.If(V.Local.sTemp.Trim,<>,"")
+	F.Intrinsic.Control.CallSub(Checkbins,"Bins",V.Local.sTemp,"Screen","IssueMaterial")
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("IssueMaterial_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3925_RESTRICT_BIN.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.IssueMaterial.End
+
+Program.Sub.Shipping.Start
+F.Intrinsic.Control.SetErrorHandler("Shipping_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+'String together the Bins from Shipping Lot Bin screen in sBinTemp as an array, then pass to checkbins
+V.Local.sRet.Declare(String)
+V.Local.i.Declare(Float)
+V.local.bStatus.Declare(Boolean)
+V.local.sSql.Declare(String)
+V.local.iRet.Declare(Float)
+V.Local.iRows.Declare(Long)
+V.Local.sTemp.Declare(String)
+
+'Load BDF
+'Load (sBDF) -> Clone (sBDF to tBDF) -> ReadRow (from sBDF)
+F.Intrinsic.BDF.Load("AUX001","AUX001")
+F.Intrinsic.BDF.ReadRowCount("AUX001",V.Local.iRows)
+F.Intrinsic.Math.Sub(V.Local.iRows,1,V.Local.iRows)
+F.Intrinsic.Control.For(V.Local.i,0,V.Local.iRows,1)
+	F.Intrinsic.BDF.ReadRow("AUX001",V.Local.i,V.Local.sRet)
+	F.Intrinsic.String.Split(V.Local.sRet,"|~|",V.Local.sRet)
+	F.Intrinsic.Control.If(V.Local.sRet(0).Trim,=,"Y")
+		F.Intrinsic.Control.If(V.Local.sRet(2).Trim,<>,"")
+			F.Intrinsic.String.Build("{0}*!*{1}",V.Local.sTemp,V.Local.sRet(2).Trim,V.Local.sTemp)
+		F.Intrinsic.Control.EndIf
+	F.Intrinsic.Control.EndIf
+F.Intrinsic.Control.Next(V.Local.i)
+
+F.Intrinsic.Control.If(V.Local.sTemp.Trim,<>,"")
+	F.Intrinsic.Control.CallSub(Checkbins,"Bins",V.Local.sTemp,"Screen","Shipping")
+F.Intrinsic.Control.EndIf
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Shipping_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3925_RESTRICT_BIN.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.Shipping.End
+
+Program.Sub.Unload.Start
+'End Program
+F.Intrinsic.Control.End
+
+Program.Sub.Unload.End
+
+Program.Sub.Comments.Start
+${$0$}$GCG_RESTRICT_BIN_ISSUE_MTL$}$SFF$}$6/25/2015
+${$1$}$$}$$}$2$}$16579$}$POST-SAVE$}$6/25/2015 10:57:08 AM$}$(Program: LOT133GI; Screen: LBHS133B)
+
+${$1$}$$}$$}$1$}$16574$}$SAVE$}$6/25/2015 10:56:48 AM$}$(Program: LOT133GI; Screen: LBHS133B)
+
+${$1$}$$}$$}$0$}$32913$}$Pre OK Hook$}$6/25/2015 10:54:17 AM$}$(Program: LOT155GI; Screen: LOT155A)
+
+${$3$}$0$}$$}$-1$}$-1$}$$}$1/1/1900$}$Issuing Material>Lot/Bin Screen:
+GAB Script will be attached to hook 32913 and will read the BDF. If any listed bins within the BDF are being used to issue material the GAB script will not allow the save/issue to continue. The bins that are not to be used will be set up through a separate maintenance program.
+
+
+Shipping>Lines>Lot/Bin
+CORE changes will be done that will add a GAB Cancel Flag to both hooks 16574 and 16579
+The GAB script will read the BDF. Looking in the First column for a Y. It will read all Y lines that are to be shipped checking each respective Bin being shipped from. If any of the bins being used the GAB script will notify the user which bin/bins are not allowed to be chosen and pass a 1 to the cancel flag to prevent the save. The user must make new selections to continue.
+
+Maintenance Program:
+A simple maintenance program will be created that will allow a user to actively mark/unmark bins that are not allowed to be issued from or shipped from.
+Include a Textbox, browser to bin master, save and delete buttons, and a grid to display all the Bins that have been marked as non-shippable/issuable. Selecting an item from the grid will populate the text box so it can be removed.
+
+
+
+Assumption: Parts being issued or Shipped are marked as Lot/Bin parts and the lot/bins records are required to be manually chosen from the above screens by the user completing the transactions.
+
+Program.Sub.Comments.End
+
